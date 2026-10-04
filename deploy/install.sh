@@ -4,15 +4,15 @@
 # (Proxmox LXC or VM running Debian/Ubuntu).
 #
 # One-liner (public repo), run as root inside the LXC/VM:
-#   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/deploy/install.sh \
-#     | bash -s -- --repo <owner>/<repo> [--auto-update]
+#   curl -fsSL https://raw.githubusercontent.com/RomainBenetiere/Simu-WS/main/deploy/install.sh \
+#     | bash -s -- --repo RomainBenetiere/Simu-WS [--auto-update]
 #
 # Private repo / private GHCR package: export a GitHub token first
 # (classic PAT with scopes `repo` + `read:packages`):
 #   export GITHUB_TOKEN=ghp_xxx GITHUB_USER=<login>
 #
 # Options:
-#   --repo owner/repo   GitHub repository (required)
+#   --repo owner/repo   GitHub repository (default: RomainBenetiere/Simu-WS)
 #   --branch name       branch holding deploy/ files (default: main)
 #   --tag tag           image tag to run (default: latest)
 #   --dir path          install directory (default: /opt/waveshare-relay)
@@ -23,7 +23,7 @@
 # =============================================================================
 set -euo pipefail
 
-REPO=""
+REPO="RomainBenetiere/Simu-WS"
 BRANCH="main"
 TAG="latest"
 DIR="/opt/waveshare-relay"

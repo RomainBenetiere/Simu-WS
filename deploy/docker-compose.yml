@@ -7,7 +7,7 @@
 # All settings live in .env (see .env.example).
 services:
   waveshare-relay:
-    image: ${WAVESHARE_IMAGE:?set WAVESHARE_IMAGE in .env (ghcr.io/<owner>/<repo>:latest)}
+    image: ${WAVESHARE_IMAGE:-ghcr.io/romainbenetiere/simu-ws:latest}
     container_name: waveshare-relay-sim
     restart: unless-stopped
     ports:

@@ -11,17 +11,17 @@ flowchart LR
 
 ## 1. Publier sur GitHub (depuis le Mac)
 
-1. Créer un dépôt vide sur https://github.com/new (ex. `simul-ws`, sans README).
+1. Dépôt GitHub : https://github.com/RomainBenetiere/Simu-WS
 2. Pousser le code :
    ```bash
    cd /Volumes/home/Github/Simul-WS
-   git remote add origin https://github.com/<owner>/simul-ws.git
+   git remote add origin https://github.com/RomainBenetiere/Simu-WS.git
    git push -u origin main
    ```
 3. Onglet **Actions** : le workflow *Docker image* lance les tests puis publie
-   `ghcr.io/<owner>/simul-ws:latest` (~3-5 min la première fois).
+   `ghcr.io/romainbenetiere/simu-ws:latest` (~3-5 min la première fois).
 4. **Rendre l'image publique** (sinon il faudra un token sur Proxmox) :
-   profil GitHub → *Packages* → `simul-ws` → *Package settings* → *Change visibility* → **Public**.
+   profil GitHub → *Packages* → `simu-ws` → *Package settings* → *Change visibility* → **Public**.
 
 Versionner une release : `git tag v1.0.0 && git push --tags` → tags `1.0.0`, `1.0`, `latest`.
 
@@ -62,8 +62,8 @@ Une fois le CT créé : `pct enter <CTID>` (ou console Proxmox) puis étape 3.
 
 ```bash
 apt update && apt install -y curl
-curl -fsSL https://raw.githubusercontent.com/<owner>/simul-ws/main/deploy/install.sh \
-  | bash -s -- --repo <owner>/simul-ws --auto-update
+curl -fsSL https://raw.githubusercontent.com/RomainBenetiere/Simu-WS/main/deploy/install.sh \
+  | bash -s -- --repo RomainBenetiere/Simu-WS --auto-update
 ```
 
 Le script : installe Docker si absent, crée `/opt/waveshare-relay/` (compose + `.env`
