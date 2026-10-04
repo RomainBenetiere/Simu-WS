@@ -27,19 +27,36 @@ Versionner une release : `git tag v1.0.0 && git push --tags` → tags `1.0.0`, `
 
 ## 2. Préparer le conteneur Docker sur Proxmox
 
-Recommandé : **LXC Debian 12 non privilégié** (léger). Dans l'interface Proxmox :
+### Option A (recommandée) : script « Docker LXC » des Proxmox Helper Scripts
 
-1. *Create CT* → template `debian-12-standard`, 1 vCPU, 512 Mo RAM, 4 Go disque,
-   IP fixe conseillée (ex. `192.168.1.50/24`) — c'est l'IP que verront vos clients Modbus.
-2. Options du CT → *Features* : cocher **nesting** et **keyctl** (indispensables pour Docker en LXC).
-   En CLI sur l'hôte Proxmox :
+Les scripts de **tteck** sont désormais archivés et maintenus par la communauté sur
+https://community-scripts.github.io/ProxmoxVE/ (le lien `tteck.github.io` peut ne plus fonctionner).
+Dans le **shell de l'hôte Proxmox** (pas dans un CT) :
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/docker.sh)"
+```
+
+- Choisir **Advanced** pour fixer une **IP statique** (ex. `192.168.1.50/24` + passerelle) :
+  c'est l'IP que verront vos clients Modbus, et elle est écrite dans `.env` à l'installation.
+  (Alternative : garder DHCP + réservation DHCP sur votre routeur.)
+- Les ressources par défaut (Debian, non privilégié, `nesting` activé) conviennent largement.
+- Portainer / Docker Compose : répondre selon vos préférences ; le *plugin* `docker compose`
+  est requis par notre script (il est installé par défaut avec Docker Engine).
+
+Une fois le CT créé : `pct enter <CTID>` (ou console Proxmox) puis étape 3.
+
+### Option B : création manuelle
+
+1. *Create CT* → template `debian-12-standard`, 1 vCPU, 512 Mo RAM, 4 Go disque, IP fixe.
+2. *Options → Features* : cocher **nesting** et **keyctl** (indispensables pour Docker en LXC) :
    ```bash
    pct set <CTID> --features nesting=1,keyctl=1
    pct start <CTID>
    ```
+   Notre `install.sh` installera Docker automatiquement.
 
-> Une **VM** Debian/Ubuntu fonctionne aussi, sans réglage particulier (plus lourde mais isolation totale).
-> Si vous avez déjà une VM/LXC Docker (Portainer…), passez directement à l'étape 3.
+> Une **VM** Debian/Ubuntu fonctionne aussi, sans réglage particulier.
 
 ## 3. Installer le simulateur (dans le LXC, en root)
 
