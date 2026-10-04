@@ -1,0 +1,9 @@
+# Waveshare 8-ch Ethernet Relay simulator — Python >= 3.10 required
+#
+# pymodbus is pinned on purpose: the simulator plugs custom PDU classes into
+# the pymodbus decoder (custom_pdu=...). That internal API moved several times
+# during the 3.x series, so we lock the exact version the code was validated on.
+pymodbus==3.15.0
+
+# Async web server (HTTP + WebSocket) sharing the same asyncio loop as Modbus.
+aiohttp>=3.9,<4

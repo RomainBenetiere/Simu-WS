@@ -1,0 +1,32 @@
+# docker compose up -d --build      -> start
+# docker compose logs -f            -> follow logs
+# docker compose down               -> graceful stop (SIGTERM)
+services:
+  waveshare-relay:
+    build: .
+    image: waveshare-relay-sim:latest
+    container_name: waveshare-relay-sim
+    restart: unless-stopped
+    ports:
+      # host:container — change the left side to expose e.g. the standard
+      # Modbus port: "502:5020" (then set WAVESHARE_ADVERTISED_PORT=502).
+      - "5020:5020"
+      - "8080:8080"
+    environment:
+      # Inside a container the auto-detected IP is the container's private
+      # address (172.x). Set the host's LAN IP so that the mocked input
+      # registers (FC04) report what supervisors actually connect to.
+      WAVESHARE_IP: ${WAVESHARE_IP:-192.168.1.200}
+      WAVESHARE_MAC: ${WAVESHARE_MAC:-02:57:53:52:4C:08}
+      WAVESHARE_DEVICE_ADDRESS: ${WAVESHARE_DEVICE_ADDRESS:-1}
+      WAVESHARE_ADVERTISED_PORT: ${WAVESHARE_ADVERTISED_PORT:-5020}
+      WAVESHARE_STRICT_UNIT_ID: ${WAVESHARE_STRICT_UNIT_ID:-false}
+      WAVESHARE_VERBOSE: ${WAVESHARE_VERBOSE:-false}
+      TZ: ${TZ:-Europe/Paris}
+    # Leave time for the ordered shutdown (Modbus -> timers -> web).
+    stop_grace_period: 10s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

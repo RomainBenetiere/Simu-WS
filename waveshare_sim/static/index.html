@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waveshare 8-ch ETH Relay — Simulateur</title>
+<!--
+  Self-contained UI: no external CSS/JS/fonts, so it works fully offline.
+  Strictly READ-ONLY: the page never sends commands, it only renders the
+  snapshots pushed by the server over the /ws WebSocket.
+-->
+<style>
+  :root {
+    --bg: #1b1f24;
+    --panel: #252b33;
+    --text: #d8dee6;
+    --muted: #8a96a3;
+    --case: #121212;
+    --case-edge: #2b2b2b;
+    --terminal: #1f8a3a;
+    --terminal-dark: #146428;
+    --led-on: #39ff6a;
+    --led-off: #5a1414;
+    --accent: #3da5ff;
+    --warn: #ffb02e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: radial-gradient(circle at 30% 0%, #2a3038, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  .pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .3px; }
+  .pill.ok   { background: #12391f; color: #5dff8a; }
+  .pill.bad  { background: #3d1515; color: #ff7b7b; }
+  .pill.ro   { background: #2d3440; color: var(--muted); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+  @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+
+  /* ------------------------------------------------------------------ */
+  /* Enclosure                                                           */
+  /* ------------------------------------------------------------------ */
+  .device {
+    background: linear-gradient(180deg, #1c1c1c, var(--case) 30%, #0b0b0b);
+    border: 2px solid var(--case-edge);
+    border-radius: 14px;
+    padding: 18px 22px 22px;
+    box-shadow: 0 18px 40px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    overflow-x: auto;
+  }
+  .rail { display: flex; gap: 10px; min-width: 760px; }
+
+  /* Green pluggable terminal blocks (NO / COM / NC per channel) */
+  .channel { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .terminal {
+    width: 100%;
+    background: linear-gradient(180deg, #27a347, var(--terminal) 45%, var(--terminal-dark));
+    border-radius: 5px 5px 3px 3px;
+    padding: 7px 5px 5px;
+    display: flex; justify-content: space-around;
+    box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.6);
+  }
+  .screw {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #e6e6e6, #8d8d8d 60%, #555);
+    position: relative; box-shadow: 0 1px 2px rgba(0,0,0,.6);
+  }
+  .screw::before, .screw::after {
+    content: ""; position: absolute; background: #3a3a3a; border-radius: 1px;
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+  }
+  .screw::before { width: 12px; height: 2px; }
+  .screw::after  { width: 2px;  height: 12px; }
+  .pins { display: flex; justify-content: space-around; width: 100%; font-size: 9px; color: #b9b9b9; letter-spacing: .5px; }
+
+  /* Contact diagram: shows which side COM is connected to */
+  .contact { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; color: var(--muted); height: 14px; }
+  .contact b { color: var(--text); }
+
+  .led {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #8a2a2a, var(--led-off) 70%);
+    box-shadow: inset 0 0 3px rgba(0,0,0,.8);
+    transition: background .08s, box-shadow .08s;
+  }
+  .led.on {
+    background: radial-gradient(circle at 35% 35%, #d9ffe2, var(--led-on) 55%, #12a33a);
+    box-shadow: 0 0 10px 3px rgba(57,255,106,.65), 0 0 22px 6px rgba(57,255,106,.25);
+  }
+  .ch-label { font-weight: 700; font-size: 13px; color: #e8e8e8; letter-spacing: .5px; }
+  .state { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .state.on { color: var(--led-on); }
+
+  /* Flash countdown */
+  .flash { width: 100%; height: 30px; font-size: 10px; text-align: center; color: var(--warn); visibility: hidden; }
+  .flash.active { visibility: visible; }
+  .bar { height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin-top: 3px; }
+  .bar > i { display: block; height: 100%; background: var(--warn); width: 0%; }
+
+  /* Bottom strip: brand, status LEDs, RJ45, power terminal */
+  .bottom { display: flex; align-items: center; gap: 22px; margin-top: 20px; min-width: 760px; }
+  .brand { font-weight: 800; font-size: 22px; letter-spacing: 1px; color: #f2f2f2; }
+  .brand small { display: block; font-size: 11px; font-weight: 500; color: #9a9a9a; letter-spacing: .3px; }
+  .status-leds { display: flex; gap: 16px; margin-left: auto; }
+  .sled { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 9px; color: #9a9a9a; }
+  .sled .dot { width: 9px; height: 9px; border-radius: 50%; background: #333; }
+  .dot.pwr { background: #ff3b3b; box-shadow: 0 0 8px #ff3b3b; }
+  .dot.run.on { background: var(--led-on); box-shadow: 0 0 8px var(--led-on); }
+  .dot.act.on { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .rj45 {
+    width: 54px; height: 46px; background: linear-gradient(#c9c9c9, #8f8f8f);
+    border-radius: 4px; position: relative; box-shadow: inset 0 0 0 2px #6d6d6d;
+  }
+  .rj45::before { content: ""; position: absolute; left: 9px; right: 9px; top: 9px; bottom: 6px; background: #0d0d0d; border-radius: 2px; }
+  .rj45::after  { content: ""; position: absolute; left: 20px; right: 20px; bottom: 2px; height: 6px; background: #0d0d0d; }
+  .power { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .power .terminal { width: 64px; }
+  .power .pins { font-size: 9px; }
+
+  /* ------------------------------------------------------------------ */
+  /* Side panel                                                          */
+  /* ------------------------------------------------------------------ */
+  .panel { background: var(--panel); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .panel h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace; text-align: right; }
+  .log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; max-height: 300px; overflow-y: auto; }
+  .log div { padding: 3px 0; border-bottom: 1px solid #2f3640; display: flex; gap: 8px; }
+  .log .t { color: var(--muted); flex: none; }
+  .log .s { color: var(--accent); flex: none; min-width: 70px; }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  code { background: #1b2026; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Waveshare Modbus POE ETH Relay — 8 canaux</h1>
+  <span id="conn" class="pill bad">Déconnecté</span>
+  <span class="pill ro">Lecture seule · contrôle via Modbus TCP</span>
+</header>
+
+<div class="layout">
+  <main>
+    <section class="device" aria-label="Boîtier du module relais">
+      <div class="rail" id="rail"><!-- channels injected by JS --></div>
+
+      <div class="bottom">
+        <div class="brand">WAVESHARE<small id="model">Modbus POE ETH Relay</small></div>
+        <div class="status-leds">
+          <div class="sled"><span class="dot pwr"></span>PWR</div>
+          <div class="sled"><span class="dot run" id="led-run"></span>RUN</div>
+          <div class="sled"><span class="dot act" id="led-act"></span>ACT</div>
+        </div>
+        <div class="rj45" title="RJ45 Ethernet / PoE"></div>
+        <div class="power">
+          <div class="terminal"><span class="screw"></span><span class="screw"></span></div>
+          <div class="pins"><span>DC+</span><span>GND</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:18px">
+      <h2>Commandes Modbus utiles</h2>
+      <div class="hint">
+        FC05 <code>0x0000–0x0007</code> : <code>FF00</code>=ON, <code>0000</code>=OFF, <code>5500</code>=Toggle ·
+        FC05 <code>0x00FF</code> : tous les relais ·
+        FC05 <code>0x0200+ch</code> Flash ON / <code>0x0400+ch</code> Flash OFF (valeur × 100&nbsp;ms) ·
+        FC01 lecture des états · FC0F écriture multiple · FC03 <code>0x8000</code> version firmware ·
+        FC04 <code>0x0000–0x0010</code> infos système (MAC, IP…).
+      </div>
+    </section>
+  </main>
+
+  <aside>
+    <section class="panel">
+      <h2>Identité réseau (simulée)</h2>
+      <dl>
+        <dt>Adresse MAC</dt><dd id="i-mac">—</dd>
+        <dt>Adresse IP</dt><dd id="i-ip">—</dd>
+        <dt>Masque</dt><dd id="i-mask">—</dd>
+        <dt>Passerelle</dt><dd id="i-gw">—</dd>
+        <dt>Port Modbus TCP</dt><dd id="i-port">—</dd>
+        <dt>Adresse esclave</dt><dd id="i-addr">—</dd>
+        <dt>Firmware</dt><dd id="i-fw">—</dd>
+        <dt>Hardware</dt><dd id="i-hw">—</dd>
+        <dt>Uptime</dt><dd id="i-up">—</dd>
+      </dl>
+    </section>
+    <section class="panel">
+      <h2>Statistiques</h2>
+      <dl>
+        <dt>Requêtes Modbus</dt><dd id="s-req">0</dd>
+        <dt>Exceptions</dt><dd id="s-err">0</dd>
+        <dt>Commutations relais</dt><dd id="s-sw">0</dd>
+      </dl>
+    </section>
+    <section class="panel">
+      <h2>Journal d'activité</h2>
+      <div class="log" id="log"></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+"use strict";
+/* ---------------------------------------------------------------------
+ * Build the 8 channels once; afterwards we only toggle classes/text.
+ * ------------------------------------------------------------------- */
+const RELAYS = 8;
+const rail = document.getElementById("rail");
+const ui = [];  // per-channel DOM references
+for (let i = 0; i < RELAYS; i++) {
+  const el = document.createElement("div");
+  el.className = "channel";
+  el.innerHTML = `
+    <div class="terminal"><span class="screw"></span><span class="screw"></span><span class="screw"></span></div>
+    <div class="pins"><span>NO</span><span>COM</span><span>NC</span></div>
+    <div class="contact"></div>
+    <div class="led"></div>
+    <div class="ch-label">CH${i + 1}</div>
+    <div class="state">OFF</div>
+    <div class="flash"><span class="flash-txt"></span><div class="bar"><i></i></div></div>`;
+  rail.appendChild(el);
+  ui.push({
+    led: el.querySelector(".led"),
+    state: el.querySelector(".state"),
+    contact: el.querySelector(".contact"),
+    flash: el.querySelector(".flash"),
+    flashTxt: el.querySelector(".flash-txt"),
+    bar: el.querySelector(".bar > i"),
+    timer: null,  // {mode, duration, endsAt (performance.now based)}
+  });
+}
+
+const $ = (id) => document.getElementById(id);
+let uptimeBase = null;  // {uptime_s, receivedAt}
+
+/* ---------------------------------------------------------------------
+ * Render one snapshot from the server.
+ * ------------------------------------------------------------------- */
+function render(snap) {
+  const now = performance.now();
+  snap.relays.forEach((r, i) => {
+    const c = ui[i];
+    c.led.classList.toggle("on", r.on);
+    c.state.classList.toggle("on", r.on);
+    c.state.textContent = r.on ? "ON" : "OFF";
+    // Relay energised => COM switches from NC to NO.
+    c.contact.innerHTML = r.on ? "<b>COM↔NO</b>" : "COM↔NC";
+    // Flash timers are animated locally from remaining_ms (no server spam).
+    c.timer = r.flash
+      ? { mode: r.flash.mode, duration: r.flash.duration_ms, endsAt: now + r.flash.remaining_ms }
+      : null;
+  });
+
+  const d = snap.device;
+  $("model").textContent = d.model;
+  $("i-mac").textContent = d.mac;
+  $("i-ip").textContent = d.ip;
+  $("i-mask").textContent = d.netmask;
+  $("i-gw").textContent = d.gateway;
+  $("i-port").textContent = d.modbus_port;
+  $("i-addr").textContent = d.device_address;
+  $("i-fw").textContent = d.firmware;
+  $("i-hw").textContent = d.hardware;
+  uptimeBase = { uptime_s: snap.uptime_s, receivedAt: now };
+
+  $("s-req").textContent = snap.stats.modbus_requests;
+  $("s-err").textContent = snap.stats.modbus_errors;
+  $("s-sw").textContent = snap.stats.relay_switches;
+
+  const log = $("log");
+  log.replaceChildren(...snap.events.slice().reverse().map((e) => {
+    const row = document.createElement("div");
+    row.innerHTML = `<span class="t"></span><span class="s"></span><span class="m"></span>`;
+    row.children[0].textContent = e.time;      // textContent => no HTML injection
+    row.children[1].textContent = e.source || "-";
+    row.children[2].textContent = e.message;
+    return row;
+  }));
+}
+
+/* Animation loop: flash countdown bars + uptime counter. */
+function animate() {
+  const now = performance.now();
+  for (const c of ui) {
+    if (c.timer) {
+      const left = Math.max(0, c.timer.endsAt - now);
+      c.flash.classList.add("active");
+      c.flashTxt.textContent = `FLASH ${c.timer.mode.toUpperCase()} · ${(left / 1000).toFixed(1)} s`;
+      c.bar.style.width = `${(100 * left) / c.timer.duration}%`;
+    } else {
+      c.flash.classList.remove("active");
+    }
+  }
+  if (uptimeBase) {
+    const s = Math.floor(uptimeBase.uptime_s + (now - uptimeBase.receivedAt) / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    $("i-up").textContent = `${h}h ${String(m).padStart(2, "0")}m ${String(sec).padStart(2, "0")}s`;
+  }
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+
+/* Brief ACT LED blink on every update received. */
+let actTimeout = null;
+function blinkAct() {
+  $("led-act").classList.add("on");
+  clearTimeout(actTimeout);
+  actTimeout = setTimeout(() => $("led-act").classList.remove("on"), 120);
+}
+
+/* ---------------------------------------------------------------------
+ * WebSocket with automatic reconnection (exponential back-off, max 5 s).
+ * ------------------------------------------------------------------- */
+let retryDelay = 500;
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    retryDelay = 500;
+    $("conn").className = "pill ok";
+    $("conn").textContent = "Connecté (temps réel)";
+    $("led-run").classList.add("on");
+  };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "state") { render(msg); blinkAct(); }
+  };
+  ws.onclose = () => {
+    $("conn").className = "pill bad";
+    $("conn").textContent = "Déconnecté — reconnexion…";
+    $("led-run").classList.remove("on");
+    setTimeout(connect, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 5000);
+  };
+  ws.onerror = () => ws.close();
+}
+connect();
+</script>
+</body>
+</html>

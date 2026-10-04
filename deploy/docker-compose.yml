@@ -1,0 +1,37 @@
+# Production compose file: pulls the image built by GitHub Actions (GHCR)
+# instead of building locally. Copy this file + .env to the Docker host
+# (Proxmox LXC/VM), e.g. /opt/waveshare-relay/, then:
+#
+#   docker compose pull && docker compose up -d
+#
+# All settings live in .env (see .env.example).
+services:
+  waveshare-relay:
+    image: ${WAVESHARE_IMAGE:?set WAVESHARE_IMAGE in .env (ghcr.io/<owner>/<repo>:latest)}
+    container_name: waveshare-relay-sim
+    restart: unless-stopped
+    ports:
+      - "${HOST_MODBUS_PORT:-5020}:5020"
+      - "${HOST_WEB_PORT:-8080}:8080"
+    environment:
+      WAVESHARE_IP: ${WAVESHARE_IP:?set WAVESHARE_IP in .env (LAN IP of this Docker host)}
+      WAVESHARE_MAC: ${WAVESHARE_MAC:-02:57:53:52:4C:08}
+      WAVESHARE_NETMASK: ${WAVESHARE_NETMASK:-255.255.255.0}
+      WAVESHARE_GATEWAY: ${WAVESHARE_GATEWAY:-}
+      WAVESHARE_DEVICE_ADDRESS: ${WAVESHARE_DEVICE_ADDRESS:-1}
+      # Port reported in FC04 = port seen from the LAN (host side).
+      WAVESHARE_ADVERTISED_PORT: ${HOST_MODBUS_PORT:-5020}
+      WAVESHARE_STRICT_UNIT_ID: ${WAVESHARE_STRICT_UNIT_ID:-false}
+      WAVESHARE_VERBOSE: ${WAVESHARE_VERBOSE:-false}
+      TZ: ${TZ:-Europe/Paris}
+    stop_grace_period: 10s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
